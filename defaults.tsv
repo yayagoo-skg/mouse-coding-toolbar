@@ -1,0 +1,17 @@
+option	buttonWidth	76
+option	buttonHeight	30
+option	opacity	245
+option	alwaysOnTop	1
+option	hotkeys	1
+option	startup	0
+option	offsetX	0
+option	offsetY	0
+button	继续	继续	send	!1
+button	OK	OK	fill	!2
+button	执行	执行	fill	!3
+button	合并	合并	fill
+button	检查	检查	fill
+button	提交	提交	fill
+target	chatgpt	chatgpt.exe	OpenAI.Codex_2p2nqsd0c76g0
+target	zcode	zcode.exe
+voice	#h
