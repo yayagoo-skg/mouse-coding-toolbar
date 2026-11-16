@@ -535,7 +535,7 @@ AddClipHistory(text) {
 }
 
 TrackHover(wParam, lParam, msg, hwnd) {
-    global drag, pressInfo
+    global drag, pressInfo, hoverSince, clipPanel
     RefreshVisuals()
     if !toolbar || DllCall("GetAncestor", "Ptr", hwnd, "UInt", 2, "Ptr") != toolbar.Hwnd
         return
@@ -554,6 +554,12 @@ TrackHover(wParam, lParam, msg, hwnd) {
             pressInfo := ""
             return
         }
+    }
+    ; The instant the cursor reaches the send button, pop the panel — no timer
+    ; latency. The stationary case is still covered by UpdateToolbar's fallback.
+    if !clipPanel && MouseOnEnterBtn() {
+        hoverSince := A_TickCount
+        ShowClipPanel()
     }
 }
 
