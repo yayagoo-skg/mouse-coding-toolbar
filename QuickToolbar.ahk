@@ -48,10 +48,14 @@ voiceHolding := false
 voicePressStart := 0
 pressInfo := ""
 hoverSince := 0
+clipLeaveSince := 0
+visualStates := Map()
 OnClipboardChange(ClipboardChanged)
 OnMessage(0x200, TrackHover)
+OnMessage(0x201, RefreshVisuals)
 OnMessage(0x201, VoiceButtonDown)
 OnMessage(0x201, ToolbarButtonDown)
+OnMessage(0x202, RefreshVisuals)
 OnMessage(0x202, VoiceButtonUp)
 OnMessage(0x202, ToolbarButtonUp)
 OnMessage(0x0215, DragCaptureLost)
@@ -85,32 +89,37 @@ MatchDpiContext() {
 
 BuildToolbar() {
     global toolbar, dragHandle, visible, position, shownTarget, enterBtn, voiceBtn
+    global visualStates
     if toolbar
         toolbar.Destroy()
+    visualStates.Clear()
+    voiceBtn := 0
     visible := false
     shownTarget := false
     position := ""
     options := config.options
-    toolbar := Gui("-Caption +ToolWindow +E0x08000000 "
+    toolbar := Gui("-Caption +Border +ToolWindow +E0x08000000 "
         . (options["alwaysOnTop"] ? "+AlwaysOnTop" : "-AlwaysOnTop"), "快捷指令")
-    toolbar.BackColor := "F1F5F9"
-    toolbar.MarginX := 5
-    toolbar.MarginY := 5
+    toolbar.BackColor := "FAFBFD"
+    toolbar.MarginX := 3
+    toolbar.MarginY := 2
     toolbar.SetFont("s9", "Microsoft YaHei UI")
-    height := options["buttonHeight"]
-    dragHandle := toolbar.AddText("xm ym w22 h" height " Center +0x200 BackgroundE2E8F0 c475569", "⋮⋮")
+    height := Max(24, options["buttonHeight"] - 4)
+    dragHandle := toolbar.AddText("xm ym w14 h" height " Center +0x200 c8893A5", "⋮⋮")
     for index, button in config.buttons {
-        placement := Mod(index - 1, 6) = 0 && index > 1 ? "xm y+4" : "x+4 yp"
-        ; Blue = fill only; green = fill then press Enter.
-        colors := button.enter ? "BackgroundDCFCE7 c166534" : "BackgroundDBEAFE c1E3A8A"
+        placement := Mod(index - 1, 6) = 0 && index > 1 ? "xm y+4" : "x+1 yp"
         control := toolbar.AddText(placement " w" options["buttonWidth"] " h" height
-            " Center +0x200 " colors, "＋ " button.label)
+            " Center +0x200 c20242B", (button.enter ? "↵ " : "") button.label)
+        RegisterVisual(control, button.enter ? "E5F0FD" : "ECEEF1", button.enter ? "C9E0FC" : "D9DDE3")
         ; Clicks are delivered manually on mouse-up so press-hold can drag.
         button.ctrl := control.Hwnd
     }
-    enterBtn := toolbar.AddText("x+4 yp w46 h" height " Center +0x200 BackgroundDCFCE7 c166534", "回车")
+    toolbar.AddText("x+3 yp+5 w1 h" Max(1, height - 10) " BackgroundD8DFEA")
+    enterBtn := toolbar.AddText("x+3 yp-5 w52 h" height " Center +0x200 c20242B", "↑ 发送")
+    RegisterVisual(enterBtn, "E7F6E6", "C5E8C5")
     if config.voiceKey != "" {
-        voiceBtn := toolbar.AddText("x+4 yp w46 h" height " Center +0x200 BackgroundDBEAFE c1E3A8A", "语音")
+        voiceBtn := toolbar.AddText("x+2 yp w58 h" height " Center +0x200 c20242B", "🎙 语音")
+        RegisterVisual(voiceBtn, "E7F6E6", "C5E8C5")
     }
     toolbar.Show("Hide AutoSize")
     DllCall("SetWindowLongW", "Ptr", toolbar.Hwnd, "Int", -20, "Int",
@@ -124,26 +133,37 @@ NoActivate(wParam, lParam, msg, hwnd) {
 }
 
 UpdateToolbar(*) {
-    global shownTarget, monitorError, clipPanel, hoverSince, drag, voicePressStart
+    global shownTarget, monitorError, clipPanel, hoverSince, clipLeaveSince, drag, voicePressStart
     if voicePressStart && !GetKeyState("LButton", "P")
         ReleaseVoice()
+    RefreshVisuals()
     if busy
         return
     if paused || settingsGui || !config.buttons.Length {
         HideToolbar()
         return
     }
-    if clipPanel && !MouseOnClipPanel() && !MouseOnEnterBtn() {
+    ; While dragging, mouse events drive toolbar placement.
+    if drag {
         HideClipPanel()
         hoverSince := 0
-    }
-    if clipPanel && PanelStale()
-        ShowClipPanel()
-    ; While dragging, mouse events drive the toolbar directly; the 250 ms cycle
-    ; must not fight them by re-placing the toolbar from the stored offset.
-    if drag
         return
-    if hoverSince && A_TickCount - hoverSince >= 350 && !clipPanel
+    }
+    overSend := MouseOnEnterBtn()
+    if overSend {
+        if !hoverSince
+            hoverSince := A_TickCount
+    } else
+        hoverSince := 0
+    if clipPanel {
+        if overSend || MouseOnClipPanel()
+            clipLeaveSince := 0
+        else if !clipLeaveSince
+            clipLeaveSince := A_TickCount
+        else if A_TickCount - clipLeaveSince >= 250
+            HideClipPanel()
+    }
+    if clipPanel ? PanelStale() : (hoverSince && A_TickCount - hoverSince >= 350)
         ShowClipPanel()
     monitorError := ""
     try {
@@ -176,8 +196,9 @@ InspectComposer(calibration := false) {
 }
 
 HideToolbar() {
-    global visible, drag, position, shownTarget, pressInfo
+    global visible, drag, position, shownTarget, pressInfo, hoverSince
     HideClipPanel()
+    hoverSince := 0
     pressInfo := ""
     if drag
         DllCall("ReleaseCapture")
@@ -514,7 +535,8 @@ AddClipHistory(text) {
 }
 
 TrackHover(wParam, lParam, msg, hwnd) {
-    global hoverSince, drag, pressInfo
+    global drag, pressInfo
+    RefreshVisuals()
     if !toolbar || DllCall("GetAncestor", "Ptr", hwnd, "UInt", 2, "Ptr") != toolbar.Hwnd
         return
     if drag {
@@ -533,12 +555,6 @@ TrackHover(wParam, lParam, msg, hwnd) {
             return
         }
     }
-    MouseGetPos(, , , &ctrl, 2)
-    if ctrl && ctrl = enterBtn.Hwnd {
-        if !hoverSince
-            hoverSince := A_TickCount
-    } else
-        hoverSince := 0
 }
 
 MouseOnClipPanel() {
@@ -553,8 +569,15 @@ MouseOnEnterBtn() {
     global enterBtn
     if !enterBtn || !visible
         return false
-    MouseGetPos(, , &win, &ctrl, 2)
-    return win && win = toolbar.Hwnd && ctrl && ctrl = enterBtn.Hwnd
+    MouseGetPos(, , &win)
+    if win != toolbar.Hwnd
+        return false
+    rect := Buffer(16)
+    if !DllCall("GetWindowRect", "Ptr", enterBtn.Hwnd, "Ptr", rect)
+        return false
+    cursor := CursorPosition()
+    return cursor.x >= NumGet(rect, 0, "Int") && cursor.x < NumGet(rect, 8, "Int")
+        && cursor.y >= NumGet(rect, 4, "Int") && cursor.y < NumGet(rect, 12, "Int")
 }
 
 PanelHistoryKey() {
@@ -598,22 +621,22 @@ ShowClipPanel() {
         oldestFirst.Push(items[items.Length - A_Index + 1])
     items := oldestFirst
     HideClipPanel()
-    ui := Gui("-Caption +ToolWindow +E0x08000000 +AlwaysOnTop", "剪贴板历史")
+    ui := Gui("-Caption +Border +ToolWindow +E0x08000000 +AlwaysOnTop", "剪贴板历史")
     clipPanel := ui
-    ui.BackColor := "F1F5F9"
+    ui.BackColor := "FAFBFD"
     ui.MarginX := 4
     ui.MarginY := 4
     ui.SetFont("s9", "Microsoft YaHei UI")
-    ui.AddText("xm ym w340 h16 Center c64748B", "剪贴板历史 · 点击即粘贴")
+    ui.AddText("xm ym w300 h22 +0x200 c374151", "  剪贴板历史")
     Loop items.Length {
         text := items[A_Index]
         preview := StrReplace(StrReplace(text, "`r`n", " "), "`n", " ")
         preview := Trim(preview, " ")
         if StrLen(preview) > 26
             preview := SubStr(preview, 1, 26) "…"
-        ui.AddText("xm y+3 w340 h26 Center +0x200 BackgroundFFFFFF c334155"
-            , A_Index ". " preview)
-            .OnEvent("Click", PasteHistoryItem.Bind(text))
+        row := ui.AddText("xm y+1 w300 h26 +0x200", "  " preview)
+        row.OnEvent("Click", PasteHistoryItem.Bind(text))
+        RegisterVisual(row, "ECEEF1", "D9DDE3")
     }
     ui.Show("Hide AutoSize")
     rect := Buffer(16)
@@ -633,8 +656,12 @@ ShowClipPanel() {
 }
 
 HideClipPanel() {
-    global clipPanel
+    global clipPanel, visualStates, clipLeaveSince
+    clipLeaveSince := 0
     if clipPanel {
+        for _, control in clipPanel
+            if visualStates.Has(control.Hwnd)
+                visualStates.Delete(control.Hwnd)
         clipPanel.Destroy()
         clipPanel := 0
     }
@@ -722,14 +749,36 @@ KeySequence(key, press) {
 }
 
 SetVoiceVisual() {
-    global voiceBtn, voiceHolding, voicePressStart
-    if !voiceBtn
+    RefreshVisuals()
+}
+
+RegisterVisual(control, hover, pressed) {
+    global visualStates
+    visualStates[control.Hwnd] := {control: control, hover: hover, pressed: pressed, state: ""}
+    PaintVisual(visualStates[control.Hwnd], 0)
+}
+
+RefreshVisuals(*) {
+    global visualStates, voiceBtn, voicePressStart, drag
+    MouseGetPos(, , , &hovered, 2)
+    pressed := GetKeyState("LButton", "P")
+    for hwnd, item in visualStates {
+        state := 0
+        if voicePressStart && voiceBtn && hwnd = voiceBtn.Hwnd
+            state := 2
+        else if !drag && hwnd = hovered
+            state := pressed ? 2 : 1
+        PaintVisual(item, state)
+    }
+}
+
+PaintVisual(item, state) {
+    if item.state == state
         return
-    ; Green while the button itself is pressed or the voice key is held down.
-    if voiceHolding || voicePressStart
-        voiceBtn.Opt("BackgroundDCFCE7 c166534")
-    else
-        voiceBtn.Opt("BackgroundDBEAFE c1E3A8A")
+    item.state := state
+    background := state = 2 ? item.pressed : state = 1 ? item.hover : "FAFBFD"
+    item.control.Opt("Background" background)
+    DllCall("InvalidateRect", "Ptr", item.control.Hwnd, "Ptr", 0, "Int", 1)
 }
 
 CheckTarget(first) {
