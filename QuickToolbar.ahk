@@ -646,7 +646,9 @@ ShowClipPanel() {
     }
     ui.Show("Hide AutoSize")
     rect := Buffer(16)
-    DllCall("GetWindowRect", "Ptr", enterBtn.Hwnd, "Ptr", rect)
+    ; Right-align the panel with the toolbar edge so the entry point from the
+    ; send button lands toward the panel's middle, not its far corner.
+    DllCall("GetWindowRect", "Ptr", toolbar.Hwnd, "Ptr", rect)
     btnRight := NumGet(rect, 8, "Int"), btnTop := NumGet(rect, 4, "Int")
     prect := Buffer(16)
     DllCall("GetWindowRect", "Ptr", clipPanel.Hwnd, "Ptr", prect)
