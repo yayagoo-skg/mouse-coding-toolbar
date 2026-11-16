@@ -619,8 +619,6 @@ ShowClipPanel() {
     items := clipHistory.Clone()
     if !items.Length && A_Clipboard != ""
         items.Push(A_Clipboard)
-    if !items.Length
-        return
     ; Newest at the bottom, closest to the toolbar button.
     oldestFirst := []
     Loop items.Length
@@ -634,6 +632,11 @@ ShowClipPanel() {
     ui.MarginY := 4
     ui.SetFont("s9", "Microsoft YaHei UI")
     ui.AddText("xm ym w224 h22 +0x200 c374151", "  剪贴板历史")
+    if !items.Length {
+        ; Always show the panel, even when empty, so hovering reads as "empty"
+        ; instead of feeling like nothing happened.
+        ui.AddText("xm y+1 w224 h26 +0x200 c94A3B8", "  剪贴板是空的，复制后出现在这里")
+    }
     Loop items.Length {
         text := items[A_Index]
         preview := StrReplace(StrReplace(text, "`r`n", " "), "`n", " ")
