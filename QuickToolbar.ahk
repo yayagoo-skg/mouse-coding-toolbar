@@ -138,6 +138,7 @@ NoActivate(wParam, lParam, msg, hwnd) {
 
 UpdateToolbar(*) {
     global shownTarget, monitorError, clipPanel, hoverSince, clipLeaveSince, drag, voicePressStart
+    global actionPanel, actionInfo, actionLeaveSince, flyHover
     if voicePressStart && !GetKeyState("LButton", "P")
         ReleaseVoice()
     RefreshVisuals()
