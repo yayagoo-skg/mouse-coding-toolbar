@@ -91,6 +91,12 @@ MatchDpiContext() {
     DllCall("SetThreadDpiAwarenessContext", "Ptr", -4, "Ptr")
 }
 
+; Attaching even a no-op Click handler makes AHK add SS_NOTIFY to the Static
+; control; without it, clicks pass through the control to the toolbar window.
+DummyClick(*) {
+    return 0
+}
+
 BuildToolbar() {
     global toolbar, dragHandle, visible, position, shownTarget, enterBtn, voiceBtn
     global visualStates
@@ -110,19 +116,25 @@ BuildToolbar() {
     toolbar.SetFont("s9", "Microsoft YaHei UI")
     height := Max(24, options["buttonHeight"] - 4)
     dragHandle := toolbar.AddText("xm ym w14 h" height " Center +0x200 c8893A5", "⋮⋮")
+    dragHandle.OnEvent("Click", DummyClick)
     for index, button in config.buttons {
         placement := Mod(index - 1, 6) = 0 && index > 1 ? "xm y+4" : "x+1 yp"
         control := toolbar.AddText(placement " w" options["buttonWidth"] " h" height
             " Center +0x200 c20242B", (button.enter ? "↵ " : "") button.label)
         RegisterVisual(control, button.enter ? "E5F0FD" : "ECEEF1", button.enter ? "C9E0FC" : "D9DDE3")
-        ; Clicks are delivered manually on mouse-up so press-hold can drag.
+        ; Clicks are delivered manually on mouse-up so press-hold can drag,
+        ; but the dummy Click event must stay: it is what adds SS_NOTIFY,
+        ; without which clicks fall through the control to the toolbar window.
+        control.OnEvent("Click", DummyClick)
         button.ctrl := control.Hwnd
     }
     toolbar.AddText("x+3 yp+5 w1 h" Max(1, height - 10) " BackgroundD8DFEA")
     enterBtn := toolbar.AddText("x+3 yp-5 w52 h" height " Center +0x200 c20242B", "↑ 发送")
+    enterBtn.OnEvent("Click", DummyClick)
     RegisterVisual(enterBtn, "E7F6E6", "C5E8C5")
     if config.voiceKey != "" {
         voiceBtn := toolbar.AddText("x+2 yp w58 h" height " Center +0x200 c20242B", "🎙 语音")
+        voiceBtn.OnEvent("Click", DummyClick)
         RegisterVisual(voiceBtn, "E7F6E6", "C5E8C5")
     }
     toolbar.Show("Hide AutoSize")
@@ -600,10 +612,14 @@ TrackHover(wParam, lParam, msg, hwnd) {
 
 MouseOnClipPanel() {
     global clipPanel
-    if !clipPanel
+    try {
+        if !clipPanel
+            return false
+        MouseGetPos(, , &win)
+        return win && win = clipPanel.Hwnd
+    } catch {
         return false
-    MouseGetPos(, , &win)
-    return win && win = clipPanel.Hwnd
+    }
 }
 
 MouseOnEnterBtn() {
@@ -644,6 +660,9 @@ ClipDiagnosis(*) {
 
 PasteHistoryItem(text, *) {
     HideClipPanel()
+    ; Same dangling-capture guard as ActionPanelClick.
+    if DllCall("GetCapture", "Ptr")
+        DllCall("ReleaseCapture")
     PasteIntoComposer(text, false)
 }
 
@@ -736,24 +755,34 @@ ShowActionPanel(button) {
 }
 
 HideActionPanel() {
-    global actionPanel, actionInfo, actionLeaveSince, visualStates
+    global actionPanel, actionInfo, actionLeaveSince, visualStates, flyHover
     actionLeaveSince := 0
-    if actionPanel {
-        for _, control in actionPanel
+    ; Require a fresh hover-dwell before the flyout may reappear, otherwise a
+    ; resting cursor produces a show/hide flicker loop.
+    flyHover := ""
+    panel := actionPanel
+    ; Clear the globals BEFORE destroying: a timer thread that fires in
+    ; between must never see a destroyed-but-nonzero Gui.
+    actionPanel := 0
+    actionInfo := ""
+    if panel {
+        for _, control in panel
             if visualStates.Has(control.Hwnd)
                 visualStates.Delete(control.Hwnd)
-        actionPanel.Destroy()
-        actionPanel := 0
-        actionInfo := ""
+        panel.Destroy()
     }
 }
 
 MouseOnActionPanel() {
     global actionPanel
-    if !actionPanel
+    try {
+        if !actionPanel
+            return false
+        MouseGetPos(, , &win)
+        return win && win = actionPanel.Hwnd
+    } catch {
         return false
-    MouseGetPos(, , &win)
-    return win && win = actionPanel.Hwnd
+    }
 }
 
 ActionButtonHovered() {
@@ -765,21 +794,31 @@ ActionButtonHovered() {
 }
 
 ActionPanelClick(*) {
-    global actionInfo
-    if actionInfo
-        PasteIntoComposer(actionInfo.button.text, actionInfo.enter)
+    global actionInfo, flyHover
+    info := actionInfo
+    flyHover := ""
+    ; Hide first: PasteIntoComposer sleeps, and the panel must not linger.
     HideActionPanel()
+    ; A control destroyed inside its own click processing can leave the mouse
+    ; capture dangling on a dead window; drop it so later clicks land normally.
+    if DllCall("GetCapture", "Ptr")
+        DllCall("ReleaseCapture")
+    if info
+        PasteIntoComposer(info.button.text, info.enter)
 }
 
 HideClipPanel() {
     global clipPanel, visualStates, clipLeaveSince
     clipLeaveSince := 0
-    if clipPanel {
-        for _, control in clipPanel
+    panel := clipPanel
+    ; Clear the global before destroying so timer threads never see a
+    ; destroyed-but-nonzero Gui.
+    clipPanel := 0
+    if panel {
+        for _, control in panel
             if visualStates.Has(control.Hwnd)
                 visualStates.Delete(control.Hwnd)
-        clipPanel.Destroy()
-        clipPanel := 0
+        panel.Destroy()
     }
 }
 
