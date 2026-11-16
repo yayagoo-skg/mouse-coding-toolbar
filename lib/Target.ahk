@@ -231,6 +231,18 @@ class ComposerTarget {
         return pointer ? ComValue(13, pointer) : false
     }
 
+    ValueOf(pattern) {
+        ; IUIAutomationValuePattern::GetValue (vtable slot 3).
+        ComCall(3, pattern, "Ptr*", &pointer := 0)
+        return this.TakeBstr(pointer)
+    }
+
+    RangeText(range) {
+        ; IUIAutomationTextRange::GetText(-1) (vtable slot 13).
+        ComCall(13, range, "Int", -1, "Ptr*", &pointer := 0)
+        return this.TakeBstr(pointer)
+    }
+
     ReadableEdit(element) {
         pattern := this.Pattern(element, 10002) ; ValuePattern
         if pattern

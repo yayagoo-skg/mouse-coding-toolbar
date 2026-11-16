@@ -190,8 +190,14 @@ UpdateToolbar(*) {
             actionLeaveSince := A_TickCount
         else if A_TickCount - actionLeaveSince >= 250
             HideActionPanel()
-    } else if flyHover && A_TickCount - flyHover.since >= 300
-        ShowActionPanel(flyHover.button)
+    } else if flyHover {
+        ; Re-check the cursor before popping: the dwell record can outlive the
+        ; hover when the pointer left the toolbar without another move event.
+        MouseGetPos(, , &win, &flyCtrl, 2)
+        if win && win = toolbar.Hwnd && flyCtrl && flyCtrl = flyHover.ctrl
+            && A_TickCount - flyHover.since >= 300
+            ShowActionPanel(flyHover.button)
+    }
     monitorError := ""
     try {
         snap := InspectComposer()
@@ -459,7 +465,9 @@ Trigger(button, *) {
 
 PasteIntoComposer(text, pressEnter) {
     global busy, lastClick
-    if busy || paused || settingsGui || !shownTarget
+    ; Single choke point for every fill path (buttons, flyouts, history rows):
+    ; the 450 ms rate limit covers them all equally.
+    if busy || paused || settingsGui || !shownTarget || A_TickCount - lastClick < 450
         return
     busy := true
     lastClick := A_TickCount
@@ -490,6 +498,10 @@ PasteIntoComposer(text, pressEnter) {
         Sleep(350)
         if pressEnter {
             CheckTarget(first)
+            ; Verify the paste landed before pressing Enter: if the editor
+            ; rejected it, Enter could send a pre-existing draft instead.
+            if !PastedTextConfirmed(first.element, text)
+                throw Error("粘贴结果未确认，已取消自动回车，请手动发送。")
             SendInput("{Enter}")
         }
     } catch as caughtError {
@@ -934,6 +946,21 @@ PaintVisual(item, state) {
     background := state = 2 ? item.pressed : state = 1 ? item.hover : "FAFBFD"
     item.control.Opt("Background" background)
     DllCall("InvalidateRect", "Ptr", item.control.Hwnd, "Ptr", 0, "Int", 1)
+}
+
+PastedTextConfirmed(element, text) {
+    wanted := StrReplace(text, "`r`n", "`n")
+    pattern := target.Pattern(element, 10002) ; ValuePattern
+    if pattern {
+        value := StrReplace(target.ValueOf(pattern), "`r`n", "`n")
+        return InStr(value, wanted) > 0
+    }
+    range := target.TextRange(element)
+    if range {
+        value := StrReplace(target.RangeText(range), "`r`n", "`n")
+        return InStr(value, wanted) > 0
+    }
+    return false ; cannot verify -> never auto-send
 }
 
 CheckTarget(first) {
