@@ -1,22 +1,21 @@
 # Mouse Coding Toolbar
 
-**English**: A floating toolbar for Windows that puts your one-click text shortcuts, an Enter button, clipboard history and voice input right next to any chat input box — built with AutoHotkey v2.
+**Vibe Coding 时懒得动键盘？常用操作，鼠标点几下就行。**
 
-**中文**：Windows 悬浮快捷输入工具栏。把常用文本、回车发送、剪贴板历史、语音输入做成一排小按钮，悬浮在任意聊天/AI 对话输入框旁边，鼠标全程不碰键盘。
+Mouse Coding Toolbar 是个 Windows 悬浮工具栏。用 ChatGPT、ZCode 这类 AI 编程工具时，经常要回一句「继续」「检查一下」，或者把刚复制的报错贴回对话框。工具栏就贴在输入框旁边，这些小操作顺手点一下就能完成。
+
+Mouse Coding Toolbar is a Windows utility for mouse-only Vibe Coding. Keep text shortcuts, voice input, and clipboard history next to your chat box. Built with AutoHotkey v2.
 
 ![license](https://img.shields.io/badge/license-MIT-green)
 
-## 特性
+## 核心功能
 
-- 🎯 **跟随输入框**：工具栏自动贴在已识别的对话输入框旁，切走焦点自动隐藏，多显示器 / 不同 DPI 下正常跟随
-- ⌨️ **自定义按钮**：每个按钮可设置名称、多行内容、独立快捷键，可勾选「填入后回车」直接发送；会自动回车的按钮在名称前标上 ↵，悬停和按下时分别显示浅蓝和深一点的蓝。自动回车前会回读输入框内容核对粘贴结果，未确认粘贴成功则不发送（防止把已有草稿误发出去）
-- 🔀 **动作浮窗**：悬停只填入按钮约半秒，上方浮出「↵ 直接发送」，移上去点击即填入并发送；悬停自动发送按钮则下方浮出「只填入」，移上去点击仅填入不发送——同一个按钮两种用法随手切换
-- ↑ **发送按钮**：对当前输入框单独发送一次 Enter，与填入按钮自由组合
-- 📋 **剪贴板历史**：悬停「↑ 发送」按钮浮现历史面板，最近 10 条去重保留，点击任意一条直接粘贴到输入框
-- 🎙️ **语音输入**：绑定任意语音输入法的快捷键（支持录制，包括单独的左/右 Alt/Ctrl/Shift/Win），短按 = 开/关切换，按住 = 按住说话
-- 🖱️ **按住即拖**：按住工具栏任意位置拖动定位（按住按钮并移动 = 拖动，原地点击 = 触发按钮）
-- 🔧 **任意应用**：目标应用可自定义（填进程名即可），内置 ChatGPT / ZCode 桌面客户端预置项
-- 🔒 **本地运行**：所有数据保存在本机，不联网上传任何内容
+- **自定义输入项**。把「继续」「检查一下」或一整段常用提示词做成按钮。每个按钮的名字和内容都能改。
+- **仅填入或直接发送**。每个按钮都能设定是只把文字填进输入框，还是填入后自动回车。悬停时也能临时选用另一种方式。
+- **语音输入快捷键**。把语音按钮绑定到你正在用的输入法快捷键，支持点一下开关，也支持按住说话。
+- **剪贴板快速粘贴**。把鼠标停在「↑ 发送」上，点一条最近复制的内容，就能粘贴进输入框。历史列表最多保留 10 条去重文本。
+
+工具栏跟随已识别的输入框，切走焦点后自动隐藏。内置 ChatGPT 和 ZCode 桌面客户端预置项，也可在设置里添加目标应用。工具在本地运行。
 
 ## 环境要求
 
