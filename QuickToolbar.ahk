@@ -48,6 +48,10 @@ voiceHolding := false
 voicePressStart := 0
 pressInfo := ""
 hoverSince := 0
+actionPanel := 0
+actionInfo := ""
+actionLeaveSince := 0
+flyHover := ""
 clipLeaveSince := 0
 visualStates := Map()
 OnClipboardChange(ClipboardChanged)
@@ -165,6 +169,16 @@ UpdateToolbar(*) {
     }
     if clipPanel ? PanelStale() : (hoverSince && A_TickCount - hoverSince >= 350)
         ShowClipPanel()
+    ; Action flyout: grace period on leave, dwell fallback for a static cursor.
+    if actionPanel {
+        if MouseOnActionPanel() || ActionButtonHovered()
+            actionLeaveSince := 0
+        else if !actionLeaveSince
+            actionLeaveSince := A_TickCount
+        else if A_TickCount - actionLeaveSince >= 250
+            HideActionPanel()
+    } else if flyHover && A_TickCount - flyHover.since >= 300
+        ShowActionPanel(flyHover.button)
     monitorError := ""
     try {
         snap := InspectComposer()
@@ -196,9 +210,11 @@ InspectComposer(calibration := false) {
 }
 
 HideToolbar() {
-    global visible, drag, position, shownTarget, pressInfo, hoverSince
+    global visible, drag, position, shownTarget, pressInfo, hoverSince, flyHover
     HideClipPanel()
+    HideActionPanel()
     hoverSince := 0
+    flyHover := ""
     pressInfo := ""
     if drag
         DllCall("ReleaseCapture")
@@ -535,7 +551,7 @@ AddClipHistory(text) {
 }
 
 TrackHover(wParam, lParam, msg, hwnd) {
-    global drag, pressInfo, hoverSince, clipPanel
+    global drag, pressInfo, hoverSince, clipPanel, flyHover, actionPanel
     RefreshVisuals()
     if !toolbar || DllCall("GetAncestor", "Ptr", hwnd, "UInt", 2, "Ptr") != toolbar.Hwnd
         return
@@ -552,6 +568,8 @@ TrackHover(wParam, lParam, msg, hwnd) {
             drag := {x: cursor.x - x, y: cursor.y - y, geo: ToolbarGeometry(shownTarget)}
             DllCall("SetCapture", "Ptr", toolbar.Hwnd)
             pressInfo := ""
+            HideActionPanel()
+            flyHover := ""
             return
         }
     }
@@ -561,6 +579,22 @@ TrackHover(wParam, lParam, msg, hwnd) {
         hoverSince := A_TickCount
         ShowClipPanel()
     }
+    ; Action flyout dwell tracking on phrase buttons (instant once the dwell
+    ; has elapsed; UpdateToolbar covers a cursor that never moves).
+    MouseGetPos(, , , &actCtrl, 2)
+    targetButton := ""
+    for b in config.buttons
+        if b.ctrl && b.ctrl = actCtrl {
+            targetButton := b
+            break
+        }
+    if targetButton {
+        if !flyHover || flyHover.ctrl != actCtrl
+            flyHover := {ctrl: actCtrl, since: A_TickCount, button: targetButton}
+        if !actionPanel && A_TickCount - flyHover.since >= 300
+            ShowActionPanel(targetButton)
+    } else if flyHover
+        flyHover := ""
 }
 
 MouseOnClipPanel() {
@@ -664,6 +698,76 @@ ShowClipPanel() {
     DllCall("SetWindowPos", "Ptr", clipPanel.Hwnd, "Ptr", -1, "Int", x, "Int", y,
         "Int", 0, "Int", 0, "UInt", 0x251)
     panelRenderedKey := PanelHistoryKey()
+}
+
+ShowActionPanel(button) {
+    global actionPanel, actionInfo
+    HideActionPanel()
+    ; The flyout offers the opposite of the button's own behavior.
+    wantEnter := !button.enter
+    ui := Gui("-Caption +Border +ToolWindow +E0x08000000 +AlwaysOnTop")
+    actionPanel := ui
+    actionInfo := {button: button, enter: wantEnter}
+    ui.BackColor := "FAFBFD"
+    ui.MarginX := 3
+    ui.MarginY := 2
+    ui.SetFont("s9", "Microsoft YaHei UI")
+    w := wantEnter ? 84 : 66
+    btn := ui.AddText("xm ym w" w " h24 Center +0x200 c20242B", wantEnter ? "↵ 直接发送" : "只填入")
+    btn.OnEvent("Click", ActionPanelClick)
+    RegisterVisual(btn, wantEnter ? "E5F0FD" : "ECEEF1", wantEnter ? "C9E0FC" : "D9DDE3")
+    ui.Show("Hide AutoSize")
+    brect := Buffer(16)
+    DllCall("GetWindowRect", "Ptr", button.ctrl, "Ptr", brect)
+    center := (NumGet(brect, 0, "Int") + NumGet(brect, 8, "Int")) // 2
+    trect := Buffer(16)
+    DllCall("GetWindowRect", "Ptr", toolbar.Hwnd, "Ptr", trect)
+    prect := Buffer(16)
+    DllCall("GetWindowRect", "Ptr", actionPanel.Hwnd, "Ptr", prect)
+    width := NumGet(prect, 8, "Int") - NumGet(prect, 0, "Int")
+    height := NumGet(prect, 12, "Int") - NumGet(prect, 4, "Int")
+    x := center - width // 2
+    y := wantEnter ? NumGet(trect, 4, "Int") - height - 4 : NumGet(trect, 12, "Int") + 4
+    x := Max(SysGet(76), Min(SysGet(76) + SysGet(78) - width, x))
+    y := Max(SysGet(77), Min(SysGet(77) + SysGet(79) - height, y))
+    DllCall("SetWindowPos", "Ptr", actionPanel.Hwnd, "Ptr", -1, "Int", x, "Int", y,
+        "Int", 0, "Int", 0, "UInt", 0x251)
+}
+
+HideActionPanel() {
+    global actionPanel, actionInfo, actionLeaveSince, visualStates
+    actionLeaveSince := 0
+    if actionPanel {
+        for _, control in actionPanel
+            if visualStates.Has(control.Hwnd)
+                visualStates.Delete(control.Hwnd)
+        actionPanel.Destroy()
+        actionPanel := 0
+        actionInfo := ""
+    }
+}
+
+MouseOnActionPanel() {
+    global actionPanel
+    if !actionPanel
+        return false
+    MouseGetPos(, , &win)
+    return win && win = actionPanel.Hwnd
+}
+
+ActionButtonHovered() {
+    global actionInfo, toolbar
+    if !actionInfo
+        return false
+    MouseGetPos(, , &win, &ctrl, 2)
+    return win && win = toolbar.Hwnd && ctrl && ctrl = actionInfo.button.ctrl
+}
+
+ActionPanelClick(*) {
+    global actionInfo
+    if actionInfo
+        PasteIntoComposer(actionInfo.button.text, actionInfo.enter)
+    HideActionPanel()
 }
 
 HideClipPanel() {
