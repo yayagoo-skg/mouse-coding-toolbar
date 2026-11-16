@@ -633,28 +633,28 @@ ShowClipPanel() {
     ui.MarginX := 4
     ui.MarginY := 4
     ui.SetFont("s9", "Microsoft YaHei UI")
-    ui.AddText("xm ym w300 h22 +0x200 c374151", "  剪贴板历史")
+    ui.AddText("xm ym w224 h22 +0x200 c374151", "  剪贴板历史")
     Loop items.Length {
         text := items[A_Index]
         preview := StrReplace(StrReplace(text, "`r`n", " "), "`n", " ")
         preview := Trim(preview, " ")
-        if StrLen(preview) > 26
-            preview := SubStr(preview, 1, 26) "…"
-        row := ui.AddText("xm y+1 w300 h26 +0x200", "  " preview)
+        if StrLen(preview) > 18
+            preview := SubStr(preview, 1, 18) "…"
+        row := ui.AddText("xm y+1 w224 h26 +0x200", "  " preview)
         row.OnEvent("Click", PasteHistoryItem.Bind(text))
         RegisterVisual(row, "ECEEF1", "D9DDE3")
     }
     ui.Show("Hide AutoSize")
     rect := Buffer(16)
-    ; Right-align the panel with the toolbar edge so the entry point from the
-    ; send button lands toward the panel's middle, not its far corner.
-    DllCall("GetWindowRect", "Ptr", toolbar.Hwnd, "Ptr", rect)
-    btnRight := NumGet(rect, 8, "Int"), btnTop := NumGet(rect, 4, "Int")
+    ; Center the panel over the send button so the cursor enters mid-panel.
+    DllCall("GetWindowRect", "Ptr", enterBtn.Hwnd, "Ptr", rect)
+    btnCenter := (NumGet(rect, 0, "Int") + NumGet(rect, 8, "Int")) // 2
+    btnTop := NumGet(rect, 4, "Int")
     prect := Buffer(16)
     DllCall("GetWindowRect", "Ptr", clipPanel.Hwnd, "Ptr", prect)
     width := NumGet(prect, 8, "Int") - NumGet(prect, 0, "Int")
     height := NumGet(prect, 12, "Int") - NumGet(prect, 4, "Int")
-    x := btnRight - width
+    x := btnCenter - width // 2
     y := btnTop - height - 6
     x := Max(SysGet(76), Min(SysGet(76) + SysGet(78) - width, x))
     y := Max(SysGet(77), Min(SysGet(77) + SysGet(79) - height, y))
