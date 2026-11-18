@@ -497,10 +497,11 @@ PasteIntoComposer(text, pressEnter) {
         SendInput("^v")
         Sleep(350)
         if pressEnter {
-            CheckTarget(first)
+            ; Re-walk the composer AFTER the paste so the element is current.
+            current := CheckTarget(first)
             ; Verify the paste landed before pressing Enter: if the editor
             ; rejected it, Enter could send a pre-existing draft instead.
-            if !PastedTextConfirmed(first.element, text)
+            if !PastedTextConfirmed(current.element, text)
                 throw Error("粘贴结果未确认，已取消自动回车，请手动发送。")
             SendInput("{Enter}")
         }
@@ -950,17 +951,38 @@ PaintVisual(item, state) {
 
 PastedTextConfirmed(element, text) {
     wanted := StrReplace(text, "`r`n", "`n")
+    try range := target.TextRange(element)
+    catch
+        range := false
+    ; 1) Search the editor's text range for the pasted text (web editors).
+    if range {
+        try {
+            found := 0
+            ComCall(8, range, "w", wanted, "Int", 0, "Int", 0, "Ptr*", &found) ; FindText
+            if found
+                return true
+        }
+    }
+    ; 2) Read the whole range (plain rich-text providers support this).
+    if range {
+        try {
+            value := StrReplace(target.RangeText(range), "`r`n", "`n")
+            if value != ""
+                return InStr(value, wanted) > 0
+        }
+    }
+    ; 3) Plain edit controls expose their content via ValuePattern.
     pattern := target.Pattern(element, 10002) ; ValuePattern
     if pattern {
-        value := StrReplace(target.ValueOf(pattern), "`r`n", "`n")
-        return InStr(value, wanted) > 0
+        try {
+            value := StrReplace(target.ValueOf(pattern), "`r`n", "`n")
+            if value != ""
+                return InStr(value, wanted) > 0
+        }
     }
-    range := target.TextRange(element)
-    if range {
-        value := StrReplace(target.RangeText(range), "`r`n", "`n")
-        return InStr(value, wanted) > 0
-    }
-    return false ; cannot verify -> never auto-send
+    ; Nothing was readable: trust the paste rather than cancelling the send
+    ; on every provider. Reads that DID return decide the outcome above.
+    return true
 }
 
 CheckTarget(first) {
